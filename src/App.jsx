@@ -7,11 +7,38 @@ function urlBase64ToUint8Array(base64String) {
   return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
 }
 
+function formatRelativeTime(iso) {
+  const diffSec = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (diffSec < 60) return "just now";
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDay = Math.floor(diffHr / 24);
+  return `${diffDay}d ago`;
+}
+
 export default function App() {
   const [apiKey, setApiKey] = useState(() => localStorage.getItem("pingbox_key") || "");
-  const [status, setStatus] = useState("");
+  const [showConfig, setShowConfig] = useState(() => !localStorage.getItem("pingbox_key"));
+  const [pushActive, setPushActive] = useState(false);
+  const [status, setStatus] = useState({ text: "", isError: false });
   const [inbox, setInbox] = useState([]);
   const [loading, setLoading] = useState(false);
+
+  // Check if this device already has an active push subscription
+  useEffect(() => {
+    if ("serviceWorker" in navigator && "PushManager" in window) {
+      navigator.serviceWorker.getRegistration("/sw.js").then(async (reg) => {
+        if (reg) {
+          const sub = await reg.pushManager.getSubscription();
+          if (sub && Notification.permission === "granted") {
+            setPushActive(true);
+          }
+        }
+      });
+    }
+  }, []);
 
   const loadHistory = async (key = apiKey) => {
     const trimmed = key.trim();
@@ -20,12 +47,13 @@ export default function App() {
     setLoading(true);
     try {
       const res = await fetch("/api/history", { headers: { "x-api-key": trimmed } });
-      if (!res.ok) throw new Error("Unauthorized: check your API_SECRET.");
+      if (!res.ok) throw new Error("Unauthorized — verify your API_SECRET.");
       const data = await res.json();
       setInbox(data);
-      setStatus("");
+      setStatus({ text: "", isError: false });
     } catch (err) {
-      setStatus(err.message);
+      setStatus({ text: err.message, isError: true });
+      setShowConfig(true);
     } finally {
       setLoading(false);
     }
@@ -33,11 +61,14 @@ export default function App() {
 
   const enablePush = async () => {
     const trimmed = apiKey.trim();
-    if (!trimmed) return setStatus("Enter your API_SECRET first.");
+    if (!trimmed) {
+      setStatus({ text: "Enter your API_SECRET first.", isError: true });
+      return;
+    }
     localStorage.setItem("pingbox_key", trimmed);
 
     try {
-      setStatus("Registering Service Worker...");
+      setStatus({ text: "Registering service worker...", isError: false });
       const reg = await navigator.serviceWorker.register("/sw.js");
       const perm = await Notification.requestPermission();
       if (perm !== "granted") throw new Error("Notification permission denied.");
@@ -55,10 +86,35 @@ export default function App() {
       });
 
       if (!res.ok) throw new Error("Invalid API_SECRET or server error.");
-      setStatus("Push enabled! This device is now subscribed.");
+      setPushActive(true);
+      setShowConfig(false);
+      setStatus({ text: "Device subscribed to push notifications.", isError: false });
       loadHistory(trimmed);
     } catch (err) {
-      setStatus("Error: " + err.message);
+      setStatus({ text: err.message, isError: true });
+    }
+  };
+
+  const sendTestPing = async () => {
+    const trimmed = apiKey.trim();
+    if (!trimmed) return;
+    setStatus({ text: "Sending test notification...", isError: false });
+    try {
+      const res = await fetch("/api/notify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-api-key": trimmed },
+        body: JSON.stringify({
+          title: "PingBox Test",
+          body: "End-to-end VAPID push is working.",
+          url: window.location.origin,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to send test ping.");
+      const data = await res.json();
+      setStatus({ text: `Sent to ${data.sent}/${data.totalDevices} device(s).`, isError: false });
+      loadHistory(trimmed);
+    } catch (err) {
+      setStatus({ text: err.message, isError: true });
     }
   };
 
@@ -67,47 +123,85 @@ export default function App() {
   }, []);
 
   return (
-    <div style={{ maxWidth: 540, margin: "0 auto", padding: 20, fontFamily: "system-ui, sans-serif" }}>
-      <h1>PingBox</h1>
-      <p style={{ color: "#94a3b8" }}>Private VAPID Push Inbox</p>
+    <div className="shell">
+      <header className="header">
+        <div className="brand">
+          <h1>PingBox</h1>
+          <span className="badge">
+            <span className={`dot ${pushActive ? "active" : ""}`} />
+            {pushActive ? "push active" : "not subscribed"}
+          </span>
+        </div>
 
-      <input
-        type="password"
-        placeholder="Enter your API_SECRET"
-        value={apiKey}
-        onChange={(e) => setApiKey(e.target.value)}
-        style={{ width: "100%", padding: 12, marginBottom: 10, boxSizing: "border-box" }}
-      />
+        <div className="header-actions">
+          <button className="btn" onClick={() => loadHistory()} disabled={loading || !apiKey}>
+            {loading ? "Syncing..." : "Refresh"}
+          </button>
+          <button className="btn" onClick={() => setShowConfig((v) => !v)}>
+            {showConfig ? "Close" : "Settings"}
+          </button>
+        </div>
+      </header>
 
-      <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
-        <button onClick={enablePush} style={{ flex: 1, padding: 12 }}>
-          Enable Push
-        </button>
-        <button onClick={() => loadHistory()} disabled={loading} style={{ flex: 1, padding: 12 }}>
-          {loading ? "Loading..." : "Refresh Inbox"}
-        </button>
+      {showConfig && (
+        <section className="panel">
+          <label className="panel-label" htmlFor="api-key">
+            API Secret
+          </label>
+          <div className="input-row">
+            <input
+              id="api-key"
+              type="password"
+              className="input"
+              placeholder="Enter API_SECRET"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+            />
+            <button className="btn" onClick={() => loadHistory()}>
+              Connect
+            </button>
+          </div>
+          <div className="panel-footer">
+            <button className="btn btn-primary" onClick={enablePush}>
+              {pushActive ? "Re-sync Push Subscription" : "Enable Push on This Device"}
+            </button>
+            <button className="btn" onClick={sendTestPing} disabled={!apiKey}>
+              Send Test Ping
+            </button>
+          </div>
+        </section>
+      )}
+
+      {status.text && (
+        <div className={`notice ${status.isError ? "error" : ""}`}>{status.text}</div>
+      )}
+
+      <div className="feed-header">
+        <span className="feed-title">Inbox ({inbox.length})</span>
       </div>
 
-      {status && <p style={{ color: "#38bdf8", fontSize: 14 }}>{status}</p>}
-
-      <div>
-        {inbox.length === 0 ? (
-          <p style={{ color: "#64748b" }}>No notifications yet.</p>
-        ) : (
-          inbox.map((item, idx) => (
-            <div key={idx} style={{ border: "1px solid #334155", borderRadius: 8, padding: 14, marginBottom: 10 }}>
-              <strong>{item.title}</strong>
-              <p style={{ margin: "6px 0", whiteSpace: "pre-line" }}>{item.body}</p>
-              <div style={{ fontSize: 12, color: "#64748b", display: "flex", justifyContent: "space-between" }}>
-                <span>{new Date(item.timestamp).toLocaleString()}</span>
-                {item.url && item.url !== "/" && (
-                  <a href={item.url} target="_blank" rel="noreferrer">Open Link →</a>
-                )}
+      {inbox.length === 0 ? (
+        <div className="empty">No notifications received yet.</div>
+      ) : (
+        <div className="feed-list">
+          {inbox.map((item, idx) => (
+            <article key={`${item.timestamp}-${idx}`} className="feed-item">
+              <div className="item-top">
+                <span className="item-title">{item.title}</span>
+                <span className="item-time" title={new Date(item.timestamp).toLocaleString()}>
+                  {formatRelativeTime(item.timestamp)}
+                </span>
               </div>
-            </div>
-          ))
-        )}
-      </div>
+              {item.body && <p className="item-body">{item.body}</p>}
+              {item.url && item.url !== "/" && (
+                <a className="item-link" href={item.url} target="_blank" rel="noreferrer">
+                  {item.url.replace(/^https?:\/\//, "")}
+                </a>
+              )}
+            </article>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
