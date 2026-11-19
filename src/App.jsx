@@ -23,6 +23,12 @@ export default function App() {
   const [showConfig, setShowConfig] = useState(() => !localStorage.getItem("pingbox_key"));
   const [pushActive, setPushActive] = useState(false);
   const [status, setStatus] = useState({ text: "", isError: false });
+
+  // Topics & Inbox state
+  const [topics, setTopics] = useState(["general"]);
+  const [activeTopic, setActiveTopic] = useState("general");
+  const [newTopicName, setNewTopicName] = useState("");
+  const [showNewTopic, setShowNewTopic] = useState(false);
   const [inbox, setInbox] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -45,16 +51,19 @@ export default function App() {
     }
   }, []);
 
-  const loadHistory = async (key = apiKey) => {
+  const loadHistory = async (topic = activeTopic, key = apiKey) => {
     const trimmed = key.trim();
     if (!trimmed) return;
     localStorage.setItem("pingbox_key", trimmed);
     setLoading(true);
     try {
-      const res = await fetch("/api/history", { headers: { "x-api-key": trimmed } });
+      const res = await fetch(`/api/history?topic=${encodeURIComponent(topic)}`, {
+        headers: { "x-api-key": trimmed },
+      });
       if (!res.ok) throw new Error("Unauthorized — verify your API_SECRET.");
       const data = await res.json();
-      setInbox(data);
+      setTopics(data.topics || ["general"]);
+      setInbox(data.messages || []);
       setStatus({ text: "", isError: false });
     } catch (err) {
       setStatus({ text: err.message, isError: true });
@@ -62,6 +71,59 @@ export default function App() {
     } finally {
       setLoading(false);
     }
+  };
+
+  useEffect(() => {
+    if (apiKey) loadHistory(activeTopic, apiKey);
+  }, [activeTopic]);
+
+  const createTopic = async (e) => {
+    e.preventDefault();
+    const clean = newTopicName.trim().toLowerCase().replace(/[^a-z0-9-_]/g, "-");
+    if (!clean) return;
+    try {
+      const res = await fetch("/api/history", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-api-key": apiKey.trim() },
+        body: JSON.stringify({ topic: clean }),
+      });
+      if (!res.ok) throw new Error("Failed to create channel.");
+      setNewTopicName("");
+      setShowNewTopic(false);
+      setActiveTopic(clean);
+      loadHistory(clean);
+    } catch (err) {
+      setStatus({ text: err.message, isError: true });
+    }
+  };
+
+  const deleteMessage = async (id) => {
+    setInbox((prev) => prev.filter((item) => (item.id || item.timestamp) !== id));
+    await fetch("/api/history", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json", "x-api-key": apiKey.trim() },
+      body: JSON.stringify({ topic: activeTopic, id }),
+    });
+  };
+
+  const clearTopic = async () => {
+    setInbox([]);
+    await fetch("/api/history", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json", "x-api-key": apiKey.trim() },
+      body: JSON.stringify({ topic: activeTopic, clearAll: true }),
+    });
+  };
+
+  const deleteTopic = async () => {
+    if (activeTopic === "general") return;
+    await fetch("/api/history", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json", "x-api-key": apiKey.trim() },
+      body: JSON.stringify({ topic: activeTopic, deleteTopic: true }),
+    });
+    setActiveTopic("general");
+    loadHistory("general");
   };
 
   const enablePush = async () => {
@@ -94,7 +156,7 @@ export default function App() {
       setPushActive(true);
       setShowConfig(false);
       setStatus({ text: "Device subscribed to push notifications.", isError: false });
-      loadHistory(trimmed);
+      loadHistory(activeTopic, trimmed);
     } catch (err) {
       setStatus({ text: err.message, isError: true });
     }
@@ -120,6 +182,7 @@ export default function App() {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-api-key": trimmedKey },
         body: JSON.stringify({
+          topic: activeTopic,
           title: title.trim() || "PingBox",
           body: body.trim(),
           url: url.trim() || "/",
@@ -133,8 +196,8 @@ export default function App() {
       setTitle("");
       setBody("");
       setUrl("");
-      setStatus({ text: `Sent to ${data.sent}/${data.totalDevices} device(s).`, isError: false });
-      loadHistory(trimmedKey);
+      setStatus({ text: `Sent to #${activeTopic} (${data.sent}/${data.totalDevices} devices).`, isError: false });
+      loadHistory(activeTopic, trimmedKey);
     } catch (err) {
       setStatus({ text: err.message, isError: true });
     } finally {
@@ -147,10 +210,6 @@ export default function App() {
       sendCustomPing();
     }
   };
-
-  useEffect(() => {
-    if (apiKey) loadHistory(apiKey);
-  }, []);
 
   return (
     <div className="shell">
@@ -200,40 +259,84 @@ export default function App() {
       )}
 
       {apiKey && (
-        <form className="composer" onSubmit={sendCustomPing}>
-          <span className="panel-label" style={{ marginBottom: 0 }}>
-            Send Ping
-          </span>
-          <div className="composer-row">
-            <input
-              type="text"
-              className="input"
-              placeholder="Title (optional)"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-            />
-            <input
-              type="url"
-              className="input"
-              placeholder="Link URL (optional)"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-            />
+        <>
+          {/* Topics / Channels Bar */}
+          <div className="topics-bar">
+            {topics.map((t) => (
+              <button
+                key={t}
+                className={`topic-pill ${activeTopic === t ? "active" : ""}`}
+                onClick={() => setActiveTopic(t)}
+              >
+                #{t}
+              </button>
+            ))}
+
+            {showNewTopic ? (
+              <form className="new-topic-form" onSubmit={createTopic}>
+                <input
+                  type="text"
+                  className="input new-topic-input"
+                  placeholder="channel-name"
+                  value={newTopicName}
+                  onChange={(e) => setNewTopicName(e.target.value)}
+                  autoFocus
+                />
+                <button type="submit" className="btn btn-primary" style={{ padding: "5px 10px", fontSize: 12 }}>
+                  Add
+                </button>
+                <button
+                  type="button"
+                  className="btn"
+                  style={{ padding: "5px 8px", fontSize: 12 }}
+                  onClick={() => setShowNewTopic(false)}
+                >
+                  ×
+                </button>
+              </form>
+            ) : (
+              <button className="topic-pill" onClick={() => setShowNewTopic(true)}>
+                + New Chat
+              </button>
+            )}
           </div>
-          <textarea
-            className="textarea"
-            placeholder="Write a message to push to your devices..."
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            onKeyDown={handleKeyDown}
-          />
-          <div className="composer-actions">
-            <span className="hint">Ctrl + Enter to send</span>
-            <button type="submit" className="btn btn-primary" disabled={sending}>
-              {sending ? "Sending..." : "Send Ping"}
-            </button>
-          </div>
-        </form>
+
+          {/* Composer */}
+          <form className="composer" onSubmit={sendCustomPing}>
+            <span className="panel-label" style={{ marginBottom: 0 }}>
+              Send to #{activeTopic}
+            </span>
+            <div className="composer-row">
+              <input
+                type="text"
+                className="input"
+                placeholder="Title (optional)"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+              />
+              <input
+                type="url"
+                className="input"
+                placeholder="Link URL (optional)"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+              />
+            </div>
+            <textarea
+              className="textarea"
+              placeholder={`Write a message to #${activeTopic}...`}
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              onKeyDown={handleKeyDown}
+            />
+            <div className="composer-actions">
+              <span className="hint">Ctrl + Enter to send</span>
+              <button type="submit" className="btn btn-primary" disabled={sending}>
+                {sending ? "Sending..." : "Send Ping"}
+              </button>
+            </div>
+          </form>
+        </>
       )}
 
       {status.text && (
@@ -241,29 +344,55 @@ export default function App() {
       )}
 
       <div className="feed-header">
-        <span className="feed-title">Inbox ({inbox.length})</span>
+        <span className="feed-title">
+          #{activeTopic} ({inbox.length})
+        </span>
+        <div className="feed-actions">
+          {inbox.length > 0 && (
+            <button className="btn-ghost-danger" onClick={clearTopic}>
+              Clear chat
+            </button>
+          )}
+          {activeTopic !== "general" && (
+            <button className="btn-ghost-danger" onClick={deleteTopic}>
+              Delete #{activeTopic}
+            </button>
+          )}
+        </div>
       </div>
 
       {inbox.length === 0 ? (
-        <div className="empty">No notifications received yet.</div>
+        <div className="empty">No notifications in #{activeTopic} yet.</div>
       ) : (
         <div className="feed-list">
-          {inbox.map((item, idx) => (
-            <article key={`${item.timestamp}-${idx}`} className="feed-item">
-              <div className="item-top">
-                <span className="item-title">{item.title}</span>
-                <span className="item-time" title={new Date(item.timestamp).toLocaleString()}>
-                  {formatRelativeTime(item.timestamp)}
-                </span>
-              </div>
-              {item.body && <p className="item-body">{item.body}</p>}
-              {item.url && item.url !== "/" && (
-                <a className="item-link" href={item.url} target="_blank" rel="noreferrer">
-                  {item.url.replace(/^https?:\/\//, "")}
-                </a>
-              )}
-            </article>
-          ))}
+          {inbox.map((item, idx) => {
+            const msgId = item.id || item.timestamp;
+            return (
+              <article key={`${msgId}-${idx}`} className="feed-item">
+                <div className="item-top">
+                  <span className="item-title">{item.title}</span>
+                  <div className="item-meta-right">
+                    <span className="item-time" title={new Date(item.timestamp).toLocaleString()}>
+                      {formatRelativeTime(item.timestamp)}
+                    </span>
+                    <button
+                      className="btn-ghost-danger"
+                      onClick={() => deleteMessage(msgId)}
+                      title="Delete message"
+                    >
+                      delete
+                    </button>
+                  </div>
+                </div>
+                {item.body && <p className="item-body">{item.body}</p>}
+                {item.url && item.url !== "/" && (
+                  <a className="item-link" href={item.url} target="_blank" rel="noreferrer">
+                    {item.url.replace(/^https?:\/\//, "")}
+                  </a>
+                )}
+              </article>
+            );
+          })}
         </div>
       )}
     </div>
