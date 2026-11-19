@@ -93,6 +93,6 @@ npm run preview
 
 ## Data in Redis
 
-- `pingbox:topics` — set of topic names.
-- `pingbox:msg:<topic>` — newest-first message history for a topic.
-- `pingbox:subs` — browser push subscriptions keyed by endpoint.
+- `pingbox:topics` - set of topic names.
+- `pingbox:msg:<topic>` - newest-first message history for a topic.
+- `pingbox:subs` - browser push subscriptions keyed by endpoint.
