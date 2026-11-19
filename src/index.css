@@ -281,3 +281,52 @@ body {
   color: var(--text-dim);
   font-size: 13px;
 }
+
+.composer {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.composer-row {
+  display: flex;
+  gap: 8px;
+}
+
+.textarea {
+  width: 100%;
+  min-height: 76px;
+  resize: vertical;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.5;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.textarea:focus {
+  border-color: var(--border-strong);
+}
+
+.composer-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.hint {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+}
