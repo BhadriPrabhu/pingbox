@@ -1,6 +1,12 @@
 # PingBox
 
-PingBox is a private, topic-based push notification inbox. Send notifications to subscribed browsers, organize message history into topics, and manage messages from the web interface.
+A private, topic-based push notification inbox for sending messages to subscribed browsers and managing them in one place.
+
+[![React](https://img.shields.io/badge/React-Frontend-61DAFB?logo=react&logoColor=black)](https://react.dev/)
+[![Vite](https://img.shields.io/badge/Vite-Build-646CFF?logo=vite&logoColor=white)](https://vite.dev/)
+[![Vercel](https://img.shields.io/badge/API-Vercel%20Functions-black?logo=vercel&logoColor=white)](https://vercel.com/)
+[![Upstash Redis](https://img.shields.io/badge/Storage-Upstash%20Redis-00E9A3?logo=redis&logoColor=white)](https://upstash.com/redis)
+[![Web Push](https://img.shields.io/badge/Notifications-Web%20Push-5A0FC8)](https://developer.mozilla.org/en-US/docs/Web/API/Push_API)
 
 ## Architecture
 
