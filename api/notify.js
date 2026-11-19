@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { Redis } from "@upstash/redis";
 import * as webpushPkg from "web-push";
 
@@ -21,25 +22,44 @@ export default async function handler(req, res) {
 
     webpush.setVapidDetails(subject, pubKey, privKey);
 
-    const { title = "PingBox Alert", body = "", url = "/" } = req.body || {};
-    const payload = { title, body, url, timestamp: new Date().toISOString() };
+    const {
+      topic = "general",
+      title = "PingBox Alert",
+      body = "",
+      url = "/",
+    } = req.body || {};
 
-    // 1. Save to inbox history (keep latest 50)
-    await redis.lpush("pingbox:history", JSON.stringify(payload));
-    await redis.ltrim("pingbox:history", 0, 49);
+    const cleanTopic = topic.trim().toLowerCase().replace(/[^a-z0-9-_]/g, "-") || "general";
+    const payload = {
+      id: crypto.randomUUID(),
+      topic: cleanTopic,
+      title,
+      body,
+      url,
+      timestamp: new Date().toISOString(),
+    };
+
+    // 1. Register topic & save message to that topic's list
+    await redis.sadd("pingbox:topics", cleanTopic);
+    await redis.lpush(`pingbox:msg:${cleanTopic}`, JSON.stringify(payload));
+    await redis.ltrim(`pingbox:msg:${cleanTopic}`, 0, 49);
 
     // 2. Push to all subscribed devices
     const subs = (await redis.hgetall("pingbox:subs")) || {};
     const endpoints = Object.keys(subs);
 
     let sent = 0;
+    const pushPayload = JSON.stringify({
+      ...payload,
+      title: cleanTopic === "general" ? title : `[${cleanTopic}] ${title}`,
+    });
+
     for (const endpoint of endpoints) {
-      const sub = typeof subs[endpoint] === "string"
-        ? JSON.parse(subs[endpoint])
-        : subs[endpoint];
+      const sub =
+        typeof subs[endpoint] === "string" ? JSON.parse(subs[endpoint]) : subs[endpoint];
 
       try {
-        await webpush.sendNotification(sub, JSON.stringify(payload));
+        await webpush.sendNotification(sub, pushPayload);
         sent++;
       } catch (err) {
         if (err.statusCode === 404 || err.statusCode === 410) {
@@ -48,7 +68,7 @@ export default async function handler(req, res) {
       }
     }
 
-    return res.status(200).json({ ok: true, sent, totalDevices: endpoints.length });
+    return res.status(200).json({ ok: true, topic: cleanTopic, sent, totalDevices: endpoints.length });
   } catch (err) {
     console.error("Notify error:", err);
     return res.status(500).json({ error: err.message || "Internal server error" });
