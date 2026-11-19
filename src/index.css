@@ -330,3 +330,177 @@ body {
   font-size: 11px;
   color: var(--text-dim);
 }
+
+/* Topics / Chats Bar */
+.topics-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+
+.topic-pill {
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.topic-pill:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.topic-pill.active {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+.new-topic-form {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.new-topic-input {
+  width: 130px;
+  padding: 5px 8px;
+  font-size: 12px;
+}
+
+/* Delete Actions */
+.item-meta-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.btn-ghost-danger {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.btn-ghost-danger:hover {
+  color: var(--red);
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.feed-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* Prevent long URLs or words from breaking mobile layout */
+.item-title,
+.item-body {
+  overflow-wrap: anywhere;
+}
+
+.item-link {
+  word-break: break-all;
+}
+
+/* Mobile Responsive */
+@media (max-width: 600px) {
+  .shell {
+    padding: 18px 14px calc(48px + env(safe-area-inset-bottom));
+  }
+
+  .header {
+    flex-wrap: wrap;
+    gap: 12px;
+    padding-bottom: 16px;
+    margin-bottom: 18px;
+  }
+
+  .brand {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .header-actions {
+    width: 100%;
+  }
+
+  .header-actions .btn {
+    flex: 1;
+    padding: 9px 12px;
+  }
+
+  .panel,
+  .composer {
+    padding: 14px;
+    margin-bottom: 18px;
+  }
+
+  /* Stack side-by-side inputs vertically */
+  .input-row,
+  .composer-row {
+    flex-direction: column;
+  }
+
+  /* Prevent iOS Safari auto-zoom on input focus */
+  .input,
+  .textarea {
+    font-size: 16px;
+    padding: 10px 12px;
+  }
+
+  .btn {
+    min-height: 40px;
+  }
+
+  .panel-footer .btn {
+    width: 100%;
+  }
+
+  .topics-bar {
+    gap: 8px;
+  }
+
+  .topic-pill {
+    padding: 7px 12px;
+    font-size: 13px;
+  }
+
+  .new-topic-form {
+    width: 100%;
+  }
+
+  .new-topic-input {
+    flex: 1;
+    width: auto;
+  }
+
+  /* Hide desktop keyboard shortcut hint & make Send button full width */
+  .composer-actions .hint {
+    display: none;
+  }
+
+  .composer-actions .btn-primary {
+    width: 100%;
+  }
+
+  .feed-item {
+    padding: 14px;
+  }
+
+  .item-top {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+}
