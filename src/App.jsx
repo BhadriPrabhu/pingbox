@@ -26,7 +26,12 @@ export default function App() {
   const [inbox, setInbox] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  // Check if this device already has an active push subscription
+  // Composer state
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [url, setUrl] = useState("");
+  const [sending, setSending] = useState(false);
+
   useEffect(() => {
     if ("serviceWorker" in navigator && "PushManager" in window) {
       navigator.serviceWorker.getRegistration("/sw.js").then(async (reg) => {
@@ -95,26 +100,51 @@ export default function App() {
     }
   };
 
-  const sendTestPing = async () => {
-    const trimmed = apiKey.trim();
-    if (!trimmed) return;
-    setStatus({ text: "Sending test notification...", isError: false });
+  const sendCustomPing = async (e) => {
+    if (e) e.preventDefault();
+    const trimmedKey = apiKey.trim();
+    if (!trimmedKey) {
+      setStatus({ text: "Enter your API_SECRET in Settings first.", isError: true });
+      setShowConfig(true);
+      return;
+    }
+    if (!title.trim() && !body.trim()) {
+      setStatus({ text: "Type a title or message before sending.", isError: true });
+      return;
+    }
+
+    setSending(true);
+    setStatus({ text: "", isError: false });
     try {
       const res = await fetch("/api/notify", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-api-key": trimmed },
+        headers: { "Content-Type": "application/json", "x-api-key": trimmedKey },
         body: JSON.stringify({
-          title: "PingBox Test",
-          body: "End-to-end VAPID push is working.",
-          url: window.location.origin,
+          title: title.trim() || "PingBox",
+          body: body.trim(),
+          url: url.trim() || "/",
         }),
       });
-      if (!res.ok) throw new Error("Failed to send test ping.");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "Failed to send notification.");
+      }
       const data = await res.json();
+      setTitle("");
+      setBody("");
+      setUrl("");
       setStatus({ text: `Sent to ${data.sent}/${data.totalDevices} device(s).`, isError: false });
-      loadHistory(trimmed);
+      loadHistory(trimmedKey);
     } catch (err) {
       setStatus({ text: err.message, isError: true });
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleKeyDown = (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+      sendCustomPing();
     }
   };
 
@@ -165,11 +195,45 @@ export default function App() {
             <button className="btn btn-primary" onClick={enablePush}>
               {pushActive ? "Re-sync Push Subscription" : "Enable Push on This Device"}
             </button>
-            <button className="btn" onClick={sendTestPing} disabled={!apiKey}>
-              Send Test Ping
-            </button>
           </div>
         </section>
+      )}
+
+      {apiKey && (
+        <form className="composer" onSubmit={sendCustomPing}>
+          <span className="panel-label" style={{ marginBottom: 0 }}>
+            Send Ping
+          </span>
+          <div className="composer-row">
+            <input
+              type="text"
+              className="input"
+              placeholder="Title (optional)"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+            />
+            <input
+              type="url"
+              className="input"
+              placeholder="Link URL (optional)"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+            />
+          </div>
+          <textarea
+            className="textarea"
+            placeholder="Write a message to push to your devices..."
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            onKeyDown={handleKeyDown}
+          />
+          <div className="composer-actions">
+            <span className="hint">Ctrl + Enter to send</span>
+            <button type="submit" className="btn btn-primary" disabled={sending}>
+              {sending ? "Sending..." : "Send Ping"}
+            </button>
+          </div>
+        </form>
       )}
 
       {status.text && (
